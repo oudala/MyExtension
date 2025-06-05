@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: linkdrop-mongo-dev
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_DATABASE: linkdrop_dev
+    volumes:
+      - mongodb_data_dev:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - linkdrop-network
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: linkdrop-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data_dev:/data
+    networks:
+      - linkdrop-network
+
+  api:
+    build:
+      context: ../server
+      dockerfile: Dockerfile.dev
+    container_name: linkdrop-api-dev
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      MONGODB_URI: mongodb://admin:password@mongodb:27017/linkdrop_dev?authSource=admin
+      JWT_SECRET: your-super-secret-jwt-key-for-development
+      CLIENT_URL: http://localhost:5173
+    volumes:
+      - ../server:/app
+      - /app/node_modules
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - linkdrop-network
+    command: npm run dev
+
+volumes:
+  mongodb_data_dev:
+  redis_data_dev:
+
+networks:
+  linkdrop-network:
+    driver: bridge
