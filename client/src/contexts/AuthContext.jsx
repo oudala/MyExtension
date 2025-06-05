@@ -1,139 +1,276 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { authAPI } from '../services/api';
+import { storeAuthData, clearAuthData, getStoredToken, getStoredUserData, syncAuthFromExtension } from '../services/authService';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+// Debug logging helper
+const log = (message, data = null) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[AuthContext ${timestamp}] ${message}`, data || '');
+};
 
 const AuthContext = createContext();
 
 export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
+  return useContext(AuthContext);
 };
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem('token'));
   const [error, setError] = useState(null);
+  const [initialized, setInitialized] = useState(false);
+  const lastValidationRef = useRef(0);
+  const validationTimeoutRef = useRef(null);
+  const isValidatingRef = useRef(false);
+  const validationInterval = 60000; // Increased to 1 minute
+  const maxValidationAttempts = 3;
+  const validationAttemptsRef = useRef(0);
 
-  // Setup axios instance with authentication
-  const api = axios.create({
-    baseURL: API_BASE_URL,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
+  // Clear error function
+  const clearError = () => setError(null);
 
-  // Add token to requests if available
-  api.interceptors.request.use(
-    (config) => {
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-      return config;
-    },
-    (error) => Promise.reject(error)
-  );
-
-  useEffect(() => {
-    if (token) {
-      validateToken();
-    } else {
-      setLoading(false);
+  // Check if validation is needed
+  const shouldValidate = useCallback((force = false) => {
+    const now = Date.now();
+    const timeSinceLastValidation = now - lastValidationRef.current;
+    
+    // Always validate if forced
+    if (force) return true;
+    
+    // Don't validate if:
+    // 1. Currently validating
+    // 2. Not initialized yet
+    // 3. No token exists
+    // 4. Validated recently
+    // 5. Exceeded max attempts
+    if (
+      isValidatingRef.current ||
+      !initialized ||
+      !token ||
+      timeSinceLastValidation < validationInterval ||
+      validationAttemptsRef.current >= maxValidationAttempts
+    ) {
+      return false;
     }
-  }, [token]);
 
-  const validateToken = async () => {
-    try {
-      const response = await api.get('/auth/validate');
-      setUser(response.data.user);
-      setLoading(false);
-    } catch (error) {
-      console.error('Token validation failed:', error);
-      logout();
-      setLoading(false);
+    return true;
+  }, [initialized, token]);
+
+  // Reset validation state
+  const resetValidationState = useCallback(() => {
+    validationAttemptsRef.current = 0;
+    isValidatingRef.current = false;
+    if (validationTimeoutRef.current) {
+      clearTimeout(validationTimeoutRef.current);
+      validationTimeoutRef.current = null;
     }
-  };
+  }, []);
 
-  const login = async (email, password) => {
+  // Validate and set user function
+  const validateAndSetUser = useCallback(async (force = false) => {
+    if (!shouldValidate(force)) {
+      log('Validation skipped', {
+        force,
+        isValidating: isValidatingRef.current,
+        attempts: validationAttemptsRef.current,
+        timeSinceLastValidation: Date.now() - lastValidationRef.current
+      });
+      return;
+    }
+
     try {
-      setError(null);
-      const response = await api.post('/auth/login', { email, password });
-      const { token: newToken, user: userData } = response.data;
+      isValidatingRef.current = true;
+      validationAttemptsRef.current++;
       
-      localStorage.setItem('token', newToken);
-      setToken(newToken);
-      setUser(userData);
-      return userData;
-    } catch (error) {
-      const message = error.response?.data?.message || 'Login failed';
-      setError(message);
-      throw new Error(message);
-    }
-  };
+      const currentToken = getStoredToken();
+      if (!currentToken) {
+        log('No token found, clearing auth state');
+        clearAuthData();
+        setUser(null);
+        setToken(null);
+        resetValidationState();
+        return;
+      }
 
-  const register = async (username, email, password) => {
-    try {
-      setError(null);
-      const response = await api.post('/auth/register', { username, email, password });
-      const { token: newToken, user: userData } = response.data;
+      log('Validating token', { attempt: validationAttemptsRef.current });
+      const response = await authAPI.validateToken();
       
-      localStorage.setItem('token', newToken);
-      setToken(newToken);
-      setUser(userData);
-      return userData;
-    } catch (error) {
-      const message = error.response?.data?.message || 'Registration failed';
-      setError(message);
-      throw new Error(message);
-    }
-  };
-
-  const logout = async () => {
-    try {
-      if (token) {
-        await api.post('/auth/logout');
+      if (response.data.valid) {
+        const { user: userData, token: newToken } = response.data;
+        log('Token validated successfully');
+        
+        setUser(userData);
+        setToken(newToken || currentToken);
+        storeAuthData(newToken || currentToken, userData);
+        setError(null);
+        lastValidationRef.current = Date.now();
+        resetValidationState();
+      } else {
+        throw new Error('Invalid token');
       }
     } catch (error) {
-      console.error('Logout error:', error);
+      log('Validation failed', { 
+        error: error.message, 
+        attempt: validationAttemptsRef.current 
+      });
+      
+      if (validationAttemptsRef.current >= maxValidationAttempts) {
+        log('Max validation attempts reached, clearing auth state');
+        clearAuthData();
+        setToken(null);
+        setUser(null);
+        setError('Session expired. Please login again.');
+        resetValidationState();
+      }
     } finally {
-      localStorage.removeItem('token');
+      isValidatingRef.current = false;
+    }
+  }, [shouldValidate, resetValidationState]);
+
+  // Initialize auth state
+  const initializeAuth = useCallback(async () => {
+    log('Initializing auth state');
+    try {
+      setLoading(true);
+      const storedToken = getStoredToken();
+      const storedUser = getStoredUserData();
+      
+      if (storedToken && storedUser) {
+        log('Found stored credentials');
+        setToken(storedToken);
+        setUser(storedUser);
+        await validateAndSetUser(true);
+      } else {
+        log('No stored credentials, attempting extension sync');
+        const synced = await syncAuthFromExtension();
+        if (!synced) {
+          log('Sync failed, clearing auth state');
+          clearAuthData();
+          setToken(null);
+          setUser(null);
+        }
+      }
+    } catch (error) {
+      log('Initialization failed', { error: error.message });
+      clearAuthData();
       setToken(null);
       setUser(null);
+    } finally {
+      setLoading(false);
+      setInitialized(true);
     }
-  };
+  }, [validateAndSetUser]);
 
-  const updateProfile = async (userData) => {
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      resetValidationState();
+    };
+  }, [resetValidationState]);
+
+  // Initial auth check
+  useEffect(() => {
+    initializeAuth();
+  }, [initializeAuth]);
+
+  // Periodic validation
+  useEffect(() => {
+    if (!initialized || !token) return;
+
+    log('Setting up periodic validation');
+    const intervalId = setInterval(() => {
+      validateAndSetUser();
+    }, validationInterval);
+
+    return () => {
+      log('Cleaning up periodic validation');
+      clearInterval(intervalId);
+      resetValidationState();
+    };
+  }, [initialized, token, validateAndSetUser, resetValidationState]);
+
+  // Login function
+  const login = async (email, password) => {
+    log('Attempting login');
     try {
-      const response = await api.put('/user/profile', userData);
-      setUser(response.data.user);
-      return response.data.user;
+      setLoading(true);
+      const response = await authAPI.login(email, password);
+      const { token: newToken, user: userData } = response.data;
+      
+      log('Login successful');
+      storeAuthData(newToken, userData);
+      setToken(newToken);
+      setUser(userData);
+      setError(null);
+      lastValidationRef.current = Date.now();
+      resetValidationState();
+      
+      return { success: true };
     } catch (error) {
-      const message = error.response?.data?.message || 'Failed to update profile';
-      setError(message);
-      throw new Error(message);
+      log('Login failed', { error: error.message });
+      setError(error.response?.data?.message || 'Login failed');
+      throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
-  const clearError = () => setError(null);
+  // Register function
+  const register = async (username, email, password) => {
+    log('Attempting registration');
+    try {
+      setLoading(true);
+      const response = await authAPI.register(username, email, password);
+      const { token: newToken, user: userData } = response.data;
+      
+      log('Registration successful', { hasToken: !!newToken, hasUser: !!userData });
+      storeAuthData(newToken, userData);
+      setToken(newToken);
+      setUser(userData);
+      setError(null);
+      lastValidationRef.current = Date.now();
+      resetValidationState();
+      
+      return { success: true };
+    } catch (error) {
+      log('Registration failed', { error: error.message });
+      setError(error.response?.data?.message || 'Registration failed');
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Logout function
+  const logout = () => {
+    log('Logging out');
+    clearAuthData();
+    setToken(null);
+    setUser(null);
+    setError(null);
+    resetValidationState();
+    lastValidationRef.current = 0;
+  };
 
   const value = {
     user,
+    token,
     loading,
     error,
-    token,
     login,
     register,
     logout,
-    updateProfile,
     clearError,
-    api,
+    isAuthenticated: !!user && !!token,
+    validateAndSetUser
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export default AuthProvider;

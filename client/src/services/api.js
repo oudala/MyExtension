@@ -1,33 +1,56 @@
 import axios from 'axios';
+import { getStoredToken, clearAuthData } from './authService';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-// Create axios instance with default config
+// Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
+    'Accept': 'application/json'
   },
+  withCredentials: true, // Enable sending cookies with requests
+  credentials: 'include' // Include credentials in all requests
 });
 
-// Add auth token to requests if available
+// Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    const token = getStoredToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // Ensure CORS headers are present
+    config.headers['X-Requested-With'] = 'XMLHttpRequest';
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// API services for different endpoints
+// Response interceptor for error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear all auth data on unauthorized
+      clearAuthData();
+      
+      // Only redirect to login if not already on login page
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Auth API
 export const authAPI = {
   login: (email, password) => api.post('/auth/login', { email, password }),
   register: (username, email, password) => api.post('/auth/register', { username, email, password }),
-  logout: () => api.post('/auth/logout'),
   validateToken: () => api.get('/auth/validate'),
+  logout: () => api.post('/auth/logout')
 };
 
 export const userAPI = {
@@ -40,6 +63,7 @@ export const userAPI = {
   acceptFriendRequest: (requestId) => api.put(`/user/friend-request/${requestId}`, { action: 'accept' }),
   rejectFriendRequest: (requestId) => api.put(`/user/friend-request/${requestId}`, { action: 'reject' }),
   removeFriend: (friendId) => api.delete(`/user/friends/${friendId}`),
+  getDashboardStats: () => api.get('/user/dashboard-stats'),
 };
 
 export const linksAPI = {

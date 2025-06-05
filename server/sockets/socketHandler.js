@@ -29,6 +29,17 @@ export const setupSocket = (io) => {
         socket.emit('notification:count', user.notificationCount);
       }
       
+      // Notify friends that user is online
+      if (user && user.friends.length > 0) {
+        user.friends.forEach(friendId => {
+          io.to(friendId.toString()).emit('friend_status_change', {
+            userId: decoded.userId,
+            isOnline: true,
+            lastSeen: new Date()
+          });
+        });
+      }
+      
       next();
     } catch (error) {
       console.error('Socket authentication error:', error);
@@ -51,6 +62,18 @@ export const setupSocket = (io) => {
         isOnline: false,
         lastSeen: new Date()
       });
+
+      // Notify friends that user is offline
+      const user = await User.findById(socket.userId).select('friends');
+      if (user && user.friends.length > 0) {
+        user.friends.forEach(friendId => {
+          io.to(friendId.toString()).emit('friend_status_change', {
+            userId: socket.userId,
+            isOnline: false,
+            lastSeen: new Date()
+          });
+        });
+      }
     });
     
     // Notification events
@@ -99,6 +122,27 @@ export const setupSocket = (io) => {
     
     socket.on('leave_room', (roomId) => {
       socket.leave(roomId);
+    });
+
+    // Handle browser/tab close
+    socket.on('beforeunload', async () => {
+      // Update user's offline status
+      await User.findByIdAndUpdate(socket.userId, {
+        isOnline: false,
+        lastSeen: new Date()
+      });
+
+      // Notify friends that user is offline
+      const user = await User.findById(socket.userId).select('friends');
+      if (user && user.friends.length > 0) {
+        user.friends.forEach(friendId => {
+          io.to(friendId.toString()).emit('friend_status_change', {
+            userId: socket.userId,
+            isOnline: false,
+            lastSeen: new Date()
+          });
+        });
+      }
     });
   });
   

@@ -160,20 +160,31 @@ router.put('/:linkId/read', auth, async (req, res) => {
     const link = await Link.findOneAndUpdate(
       { 
         _id: linkId,
-        'receivers.user': req.userId,
-        'receivers.read': false
+        'receivers.user': req.userId
       },
       {
-        $set: { 'receivers.$.read': true, 'receivers.$.readAt': new Date() }
+        $set: { 
+          'receivers.$.isRead': true,
+          'receivers.$.readAt': new Date() 
+        }
       },
       { new: true }
-    );
+    ).populate('sender', 'username avatar');
 
     if (!link) {
-      return res.status(404).json({ message: 'Link not found or already read' });
+      return res.status(404).json({ message: 'Link not found' });
     }
 
-    res.json({ message: 'Link marked as read' });
+    // Emit socket event to update dashboard stats
+    const io = req.app.get('io');
+    if (io) {
+      io.to(req.userId).emit('dashboard_update', { type: 'link_read' });
+    }
+
+    res.json({ 
+      message: 'Link marked as read',
+      link
+    });
   } catch (error) {
     console.error('Mark as read error:', error);
     res.status(500).json({ message: 'Server error' });

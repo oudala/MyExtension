@@ -5,6 +5,14 @@ import auth from '../middlewares/auth.js';
 
 const router = express.Router();
 
+// Cookie options
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+};
+
 // Register new user
 router.post('/register', async (req, res) => {
   try {
@@ -41,6 +49,9 @@ router.post('/register', async (req, res) => {
       { expiresIn: '7d' }
     );
 
+    // Set cookie
+    res.cookie('auth_token', token, COOKIE_OPTIONS);
+
     res.status(201).json({
       message: 'User registered successfully',
       token,
@@ -56,7 +67,7 @@ router.post('/register', async (req, res) => {
     console.error('Registration error:', error);
     if (error.code === 11000) {
       let field = Object.keys(error.keyValue)[0];
-      field = field.charAt(0).toUpperCase() + field.slice(1); // Capitalize
+      field = field.charAt(0).toUpperCase() + field.slice(1);
       return res.status(409).json({ message: `${field} already exists.` });
     }
     res.status(500).json({ message: 'Server error during registration' });
@@ -97,6 +108,9 @@ router.post('/login', async (req, res) => {
       { expiresIn: '7d' }
     );
 
+    // Set cookie
+    res.cookie('auth_token', token, COOKIE_OPTIONS);
+
     res.json({
       message: 'Login successful',
       token,
@@ -124,6 +138,7 @@ router.get('/validate', auth, async (req, res) => {
 
     res.json({
       valid: true,
+      token: req.token,
       user: {
         _id: user._id,
         username: user.username,
@@ -147,10 +162,51 @@ router.post('/logout', auth, async (req, res) => {
       lastSeen: new Date()
     });
 
+    // Clear auth cookie
+    res.clearCookie('auth_token', {
+      ...COOKIE_OPTIONS,
+      maxAge: 0
+    });
+
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error);
     res.status(500).json({ message: 'Server error during logout' });
+  }
+});
+
+// Sync auth state from extension
+router.post('/sync', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Generate a new token
+    const token = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    // Set cookie
+    res.cookie('auth_token', token, COOKIE_OPTIONS);
+
+    res.json({
+      message: 'Auth state synced successfully',
+      token,
+      user: {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        avatar: user.avatar,
+        isOnline: user.isOnline
+      }
+    });
+  } catch (error) {
+    console.error('Sync error:', error);
+    res.status(500).json({ message: 'Server error during sync' });
   }
 });
 

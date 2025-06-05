@@ -1,78 +1,69 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
+import io from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { notificationsAPI } from '../services/api';
 
 const SocketContext = createContext();
 
 export const useSocket = () => {
-  const context = useContext(SocketContext);
-  if (!context) {
-    throw new Error('useSocket must be used within SocketProvider');
-  }
-  return context;
+  return useContext(SocketContext);
 };
 
 export const SocketProvider = ({ children }) => {
-  const { token, user } = useAuth();
+  const { user } = useAuth();
   const [socket, setSocket] = useState(null);
-  const [onlineFriends, setOnlineFriends] = useState([]);
+  const [onlineFriends, setOnlineFriends] = useState(new Set());
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // Connect to socket when user is authenticated
   useEffect(() => {
-    if (!token || !user) return;
-
-    const socketInstance = io('http://localhost:5000', {
-      auth: { token },
-      transports: ['websocket'],
-    });
-
-    socketInstance.on('connect', () => {
-      console.log('Connected to socket server');
-    });
-
-    socketInstance.on('disconnect', () => {
-      console.log('Disconnected from socket server');
-    });
-
-    socketInstance.on('error', (error) => {
-      console.error('Socket error:', error);
-    });
-
-    // Handle friend status updates
-    socketInstance.on('friendStatus', ({ userId, isOnline }) => {
-      setOnlineFriends((prev) => {
-        if (isOnline && !prev.includes(userId)) {
-          return [...prev, userId];
-        } else if (!isOnline) {
-          return prev.filter((id) => id !== userId);
+    if (user && user._id) {
+      // Initialize socket connection
+      const newSocket = io('http://localhost:5000', {
+        auth: {
+          userId: user._id
         }
-        return prev;
       });
-    });
 
-    // Handle new notifications
-    socketInstance.on('notification', (notification) => {
-      setNotifications((prev) => [notification, ...prev]);
-      setUnreadCount((prev) => prev + 1);
-    });
+      setSocket(newSocket);
 
-    // Handle initial online friends list
-    socketInstance.on('onlineFriends', (friendIds) => {
-      setOnlineFriends(friendIds);
-    });
+      // Handle window events for online/offline status
+      const handleBeforeUnload = () => {
+        newSocket.emit('beforeunload');
+      };
 
-    setSocket(socketInstance);
+      window.addEventListener('beforeunload', handleBeforeUnload);
 
-    // Cleanup on unmount
-    return () => {
-      if (socketInstance) {
-        socketInstance.disconnect();
-      }
-    };
-  }, [token, user]);
+      // Handle friend status changes
+      newSocket.on('friend_status_change', ({ userId, isOnline }) => {
+        setOnlineFriends(prev => {
+          const updated = new Set(prev);
+          if (isOnline) {
+            updated.add(userId);
+          } else {
+            updated.delete(userId);
+          }
+          return updated;
+        });
+      });
+
+      // Handle new notifications
+      newSocket.on('notification', (notification) => {
+        setNotifications((prev) => [notification, ...prev]);
+        setUnreadCount((prev) => prev + 1);
+      });
+
+      // Handle initial online friends list
+      newSocket.on('onlineFriends', (friendIds) => {
+        setOnlineFriends(new Set(friendIds));
+      });
+
+      return () => {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+        newSocket.close();
+      };
+    }
+  }, [user]);
 
   // Load notifications on mount
   useEffect(() => {
@@ -141,9 +132,8 @@ export const SocketProvider = ({ children }) => {
     }
   };
 
-  // Check if a friend is online
   const isFriendOnline = (friendId) => {
-    return onlineFriends.includes(friendId);
+    return onlineFriends.has(friendId);
   };
 
   const value = {
@@ -159,3 +149,5 @@ export const SocketProvider = ({ children }) => {
 
   return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;
 };
+
+export default SocketProvider;

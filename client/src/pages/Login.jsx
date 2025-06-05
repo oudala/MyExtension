@@ -1,26 +1,48 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { syncAuthFromExtension } from '../services/authService';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
   const { login, user, error, clearError } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Redirect if already logged in
+  // Check for existing auth on mount
   useEffect(() => {
-    if (user) {
-      const from = location.state?.from?.pathname || '/';
-      navigate(from);
-    }
+    const checkAuth = async () => {
+      if (user) {
+        const from = location.state?.from?.pathname || '/';
+        navigate(from, { replace: true });
+        return;
+      }
+
+      try {
+        // Try to sync with extension first
+        const synced = await syncAuthFromExtension();
+        if (synced) {
+          const from = location.state?.from?.pathname || '/';
+          navigate(from, { replace: true });
+        }
+      } catch (error) {
+        console.log('Failed to sync with extension:', error);
+      } finally {
+        setIsChecking(false);
+      }
+    };
+
+    checkAuth();
   }, [user, navigate, location]);
 
   // Clear error when unmounting
   useEffect(() => {
-    return () => clearError();
+    return () => {
+      if (clearError) clearError();
+    };
   }, [clearError]);
 
   const handleSubmit = async (e) => {
@@ -33,14 +55,25 @@ const Login = () => {
     setIsSubmitting(true);
     
     try {
-      await login(email, password);
-      navigate('/');
-    } catch (error) {
-      console.error('Login error:', error);
+      const result = await login(email, password);
+      if (result.success) {
+        const from = location.state?.from?.pathname || '/';
+        navigate(from, { replace: true });
+      }
+    } catch (err) {
+      console.error('Login error:', err);
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  if (isChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -55,12 +88,14 @@ const Login = () => {
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
             <span className="block sm:inline">{error}</span>
-            <span className="absolute top-0 bottom-0 right-0 px-4 py-3" onClick={clearError}>
-              <svg className="fill-current h-6 w-6 text-red-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                <title>Close</title>
-                <path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/>
-              </svg>
-            </span>
+            {clearError && (
+              <span className="absolute top-0 bottom-0 right-0 px-4 py-3" onClick={clearError}>
+                <svg className="fill-current h-6 w-6 text-red-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                  <title>Close</title>
+                  <path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/>
+                </svg>
+              </span>
+            )}
           </div>
         )}
         

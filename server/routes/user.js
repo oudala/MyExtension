@@ -1,6 +1,7 @@
 import express from 'express';
 import User from '../models/User.js';
 import auth from '../middlewares/auth.js';
+import Link from '../models/Link.js';
 
 const router = express.Router();
 
@@ -244,6 +245,38 @@ router.get('/friend-requests', auth, async (req, res) => {
     res.json({ requests: pendingRequests });
   } catch (error) {
     console.error('Get friend requests error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get dashboard statistics
+router.get('/dashboard-stats', auth, async (req, res) => {
+  try {
+    // Get total links (both sent and received)
+    const totalLinks = await Link.countDocuments({
+      $or: [
+        { sender: req.userId },
+        { 'receivers.user': req.userId }
+      ]
+    });
+
+    // Get total friends
+    const user = await User.findById(req.userId).select('friends');
+    const totalFriends = user.friends.length;
+
+    // Get unread links count
+    const unreadLinks = await Link.countDocuments({
+      'receivers.user': req.userId,
+      'receivers.read': false
+    });
+
+    res.json({
+      totalLinks,
+      totalFriends,
+      unreadLinks
+    });
+  } catch (error) {
+    console.error('Get dashboard stats error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -5,18 +5,17 @@
 /**
  * Format a date string into a readable format
  * @param {string} dateString - ISO date string
- * @param {object} options - Intl.DateTimeFormat options
  * @returns {string} Formatted date string
  */
-export const formatDate = (dateString, options = {}) => {
+export const formatDate = (dateString) => {
   const date = new Date(dateString);
-  const defaultOptions = {
+  return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  };
-  
-  return date.toLocaleDateString('en-US', { ...defaultOptions, ...options });
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 };
 
 /**
@@ -72,10 +71,10 @@ export const isValidUrl = (url) => {
  */
 export const extractDomain = (url) => {
   try {
-    const urlObj = new URL(url);
-    return urlObj.hostname;
+    const domain = new URL(url).hostname;
+    return domain.replace('www.', '');
   } catch (error) {
-    return '';
+    return url;
   }
 };
 
@@ -85,9 +84,10 @@ export const extractDomain = (url) => {
  * @param {number} maxLength - Maximum length
  * @returns {string} Truncated text
  */
-export const truncateText = (text, maxLength = 50) => {
-  if (!text || text.length <= maxLength) return text;
-  return `${text.substring(0, maxLength)}...`;
+export const truncateText = (text, maxLength) => {
+  if (!text) return '';
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength) + '...';
 };
 
 /**

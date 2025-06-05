@@ -31,7 +31,8 @@ const linkSchema = new mongoose.Schema({
   receivers: [{
     user: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+      ref: 'User',
+      required: true
     },
     isRead: {
       type: Boolean,
@@ -64,6 +65,7 @@ const linkSchema = new mongoose.Schema({
 // Indexes for performance
 linkSchema.index({ sender: 1, createdAt: -1 });
 linkSchema.index({ 'receivers.user': 1, createdAt: -1 });
+linkSchema.index({ 'receivers.isRead': 1 });
 linkSchema.index({ type: 1 });
 linkSchema.index({ tags: 1 });
 
@@ -78,6 +80,21 @@ linkSchema.virtual('detectedType').get(function() {
     return 'article';
   }
   return 'other';
+});
+
+// Virtual for checking if a specific user has read the link
+linkSchema.methods.isReadByUser = function(userId) {
+  const receiver = this.receivers.find(r => r.user.toString() === userId.toString());
+  return receiver ? receiver.isRead : false;
+};
+
+// Virtual for getting read status for a specific user
+linkSchema.virtual('readStatus').get(function() {
+  return this.receivers.map(receiver => ({
+    userId: receiver.user,
+    isRead: receiver.isRead,
+    readAt: receiver.readAt
+  }));
 });
 
 export default mongoose.model('Link', linkSchema);

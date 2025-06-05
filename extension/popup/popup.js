@@ -4,15 +4,55 @@ class LinkDropExtension {
       this.currentTab = null;
       this.user = null;
       this.selectedFriends = new Set();
+      this.lastAuthCheck = 0;
+      this.authCheckInterval = 30000; // 30 seconds between auth checks
       
       this.init();
     }
   
+    // Debounce utility
+    debounce(func, wait) {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+  
     async init() {
-      await this.getCurrentTab();
-      await this.checkAuth();
-      this.setupEventListeners();
-      this.loadNotifications();
+      // Show loading screen initially
+      this.showScreen('loading');
+      
+      try {
+        await this.getCurrentTab();
+        await this.checkAuth();
+        this.setupEventListeners();
+        await this.loadNotifications();
+        
+        // Setup periodic auth check with debounce
+        this.debouncedAuthCheck = this.debounce(async () => {
+          const now = Date.now();
+          if (now - this.lastAuthCheck >= this.authCheckInterval) {
+            await this.checkAuth();
+            this.lastAuthCheck = now;
+          }
+        }, 1000);
+
+        // Listen for storage changes for auth sync
+        chrome.storage.onChanged.addListener((changes, namespace) => {
+          if (namespace === 'local' && changes.token) {
+            this.debouncedAuthCheck();
+          }
+        });
+      } catch (error) {
+        console.error('Initialization error:', error);
+        this.showError('Failed to initialize extension');
+        this.showLoginScreen();
+      }
     }
   
     async getCurrentTab() {
@@ -30,8 +70,24 @@ class LinkDropExtension {
     }
   
     async checkAuth() {
+      try {
+        // First try to validate with cookie
+        const response = await this.apiRequest('/auth/validate', 'GET', null, true);
+        if (response.valid) {
+          this.user = response.user;
+          // Store token from cookie in extension storage
+          await this.setStorageItem('token', response.token);
+          this.showMainScreen();
+          await this.loadFriends();
+          await this.loadRecentLinks();
+          return;
+        }
+      } catch (error) {
+        console.log('No valid cookie found, checking storage token');
+      }
+
+      // If cookie validation fails, try storage token
       const token = await this.getStorageItem('token');
-      
       if (token) {
         try {
           const response = await this.apiRequest('/auth/validate', 'GET');
@@ -70,7 +126,7 @@ class LinkDropExtension {
       const password = document.getElementById('password').value;
   
       try {
-        const response = await this.apiRequest('/auth/login', 'POST', { email, password });
+        const response = await this.apiRequest('/auth/login', 'POST', { email, password }, true);
         await this.setStorageItem('token', response.token);
         this.user = response.user;
         this.showMainScreen();
@@ -99,9 +155,15 @@ class LinkDropExtension {
     }
   
     async handleLogout() {
-      await this.removeStorageItem('token');
-      this.user = null;
-      this.showLoginScreen();
+      try {
+        await this.apiRequest('/auth/logout', 'POST', null, true);
+      } catch (error) {
+        console.error('Logout error:', error);
+      } finally {
+        await this.removeStorageItem('token');
+        this.user = null;
+        this.showLoginScreen();
+      }
     }
   
     async handleShare() {
@@ -299,9 +361,11 @@ class LinkDropExtension {
   
     // UI State Management
     showScreen(screenId) {
+      // Hide all screens first
       document.querySelectorAll('.screen').forEach(screen => {
         screen.classList.add('hidden');
       });
+      // Show the requested screen
       document.getElementById(screenId).classList.remove('hidden');
     }
   
@@ -381,32 +445,34 @@ class LinkDropExtension {
     }
   
     // API Request helper
-    async apiRequest(endpoint, method = 'GET', data = null) {
+    async apiRequest(endpoint, method = 'GET', data = null, withCredentials = true) {
       const token = await this.getStorageItem('token');
-      
-      const options = {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      const headers = {
+        'Content-Type': 'application/json'
       };
-  
-      if (token) {
-        options.headers.Authorization = `Bearer ${token}`;
-      }
-  
-      if (data) {
-        options.body = JSON.stringify(data);
-      }
-  
-      const response = await fetch(`${this.API_BASE}${endpoint}`, options);
       
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ message: 'Request failed' }));
-        throw new Error(error.message || `HTTP ${response.status}`);
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
       }
   
-      return response.json();
+      try {
+        const response = await fetch(`${this.API_BASE}${endpoint}`, {
+          method,
+          headers,
+          credentials: withCredentials ? 'include' : 'omit',
+          body: data ? JSON.stringify(data) : null
+        });
+  
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Request failed');
+        }
+  
+        return await response.json();
+      } catch (error) {
+        console.error(`API Request failed: ${endpoint}`, error);
+        throw error;
+      }
     }
   
     // Chrome Storage helpers
