@@ -105,6 +105,10 @@
                 <div class="section-header">
                     <div class="search-box">
                         <input type="text" id="friend-search" placeholder="Search friends...">
+                        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
                     </div>
                 </div>
                 <div class="friends-list" id="friends-list">
@@ -114,7 +118,27 @@
                     </div>
                 </div>
                 <div class="share-actions">
-                    <textarea id="share-note" placeholder="Add a note (optional)..." rows="2"></textarea>
+                    <div class="note-input">
+                        <textarea 
+                            id="share-note" 
+                            placeholder="Add a note (optional)..." 
+                            rows="2" 
+                            maxlength="500"
+                        ></textarea>
+                        <div class="note-input-footer">
+                            <div class="note-input-icons">
+                                <button class="note-emoji-btn" title="Add emoji">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"/>
+                                        <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                                        <line x1="9" y1="9" x2="9.01" y2="9"/>
+                                        <line x1="15" y1="9" x2="15.01" y2="9"/>
+                                    </svg>
+                                </button>
+                            </div>
+                            <span class="char-count">0/500</span>
+                        </div>
+                    </div>
                     <button id="share-btn" class="primary-button" disabled>
                         Share Link
                     </button>

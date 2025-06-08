@@ -175,17 +175,19 @@ body {
 
 .status-indicator {
   position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 10px;
-  height: 10px;
+  top: -2px;
+  right: -2px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background-color: #10b981;
+  background-color: var(--success);
   border: 2px solid white;
+  box-shadow: var(--shadow-sm);
+  z-index: 2;
 }
 
 .status-indicator.offline {
-  background-color: #9ca3af;
+  background-color: var(--text-muted);
 }
 
 .user-details {
@@ -433,50 +435,133 @@ button:disabled {
 }
 
 .friends-list {
-  max-height: 200px;
-  overflow-y: auto;
-  margin-bottom: var(--space-5);
-  padding: var(--space-1);
-  border-radius: var(--radius-lg);
-  background: var(--bg);
-  border: 1px solid var(--border-light);
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0 -1.5rem;
+  padding: 0 1.5rem;
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  align-items: start;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+  padding-bottom: 10px; /* Add space for the scrollbar */
+}
+
+.friends-list::-webkit-scrollbar {
+  height: 6px; /* Horizontal scrollbar height */
+  width: 0; /* Hide vertical scrollbar */
+}
+
+.friends-list::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.friends-list::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 3px;
+}
+
+.friends-list::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-muted);
 }
 
 .friend-item {
+  flex: 0 0 auto;
+  width: 80px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 8px;
-  border-radius: 8px;
-  margin-bottom: 8px;
-  cursor: pointer;
+  padding: 0.75rem;
+  background: var(--bg-light);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-light);
   transition: all 0.2s ease;
-  background: white;
-  border: 1px solid #e5e7eb;
+  cursor: pointer;
+  position: relative;
+  text-align: center;
 }
 
 .friend-item:hover {
-  background-color: #f9fafb;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
 }
 
 .friend-item.selected {
-  background-color: #eff6ff;
-  border-color: #3b82f6;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.friend-item .avatar-wrapper {
+  position: relative;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  overflow: visible;
+  background-color: var(--bg-light);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 0.5rem;
+}
+
+.friend-item .avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  background-color: var(--bg-light);
+  transition: opacity 0.2s ease;
+}
+
+.friend-item .status-indicator {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-light);
+  box-shadow: var(--shadow-sm);
+  z-index: 2;
+}
+
+.friend-item .status-indicator.online {
+  background-color: var(--success);
+}
+
+.friend-item .status-indicator.offline {
+  background-color: var(--text-muted);
 }
 
 .friend-info {
-  margin-left: 12px;
-  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 0.25rem;
 }
 
 .friend-name {
+  font-size: 0.875rem;
   font-weight: 500;
-  color: #1f2937;
-  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  color: var(--text);
 }
 
-.friend-status {
-  font-size: 12px;
-  color: #6b7280;
+.friend-item.selected .friend-name {
+  color: white;
+}
+
+.friend-checkbox {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .share-actions {
@@ -487,35 +572,94 @@ button:disabled {
 
 .note-input {
   position: relative;
+  background: var(--bg-light);
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--border);
+  transition: all 0.2s ease;
+}
+
+.note-input:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
 }
 
 .note-input textarea {
   width: 100%;
   padding: 16px;
-  border: 2px solid var(--border);
+  padding-bottom: 40px;
+  border: none;
   border-radius: var(--radius-lg);
   font-size: 14px;
   font-family: inherit;
   resize: none;
   transition: all 0.2s ease;
-  background: var(--bg-card);
+  background: transparent;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.note-input textarea::placeholder {
+  color: var(--text-muted);
 }
 
 .note-input textarea:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+.note-input-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-light);
+  border-top: 1px solid var(--border-light);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.note-input-icons {
+  display: flex;
+  gap: 8px;
+}
+
+.note-emoji-btn {
+  padding: 4px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.note-emoji-btn:hover {
+  color: var(--text);
+  background: var(--bg);
 }
 
 .char-count {
-  position: absolute;
-  bottom: 12px;
-  right: 16px;
   font-size: 12px;
   color: var(--text-muted);
-  background: var(--bg-card);
-  padding: 2px 6px;
+  background: var(--bg);
+  padding: 2px 8px;
   border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+}
+
+.char-count.near-limit {
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.char-count.at-limit {
+  color: var(--error);
+  background: rgba(239, 68, 68, 0.1);
 }
 
 /* Recent links - Compact style */

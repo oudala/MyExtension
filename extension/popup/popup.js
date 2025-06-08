@@ -71,6 +71,18 @@ class LinkDropExtension {
       if (notificationBtn) {
         notificationBtn.addEventListener('click', () => this.handleNotificationClick());
       }
+
+      // Note input handling
+      const noteInput = document.getElementById('share-note');
+      if (noteInput) {
+        noteInput.addEventListener('input', this.handleNoteInput.bind(this));
+      }
+
+      // Emoji button handling
+      const emojiBtn = document.querySelector('.note-emoji-btn');
+      if (emojiBtn) {
+        emojiBtn.addEventListener('click', this.handleEmojiClick.bind(this));
+      }
     }
   
     async handleLogin(e) {
@@ -147,23 +159,33 @@ class LinkDropExtension {
         return;
       }
 
+      // Get the note text
+      const noteText = document.getElementById('share-note')?.value.trim();
+
       const shareData = {
         url: this.currentTab.url,
         title: this.currentTab.title,
-        friends: Array.from(this.selectedFriends)
+        friends: Array.from(this.selectedFriends),
+        note: noteText // Add the note to the share data
       };
 
       try {
         await this.apiRequest('/links/share', 'POST', shareData);
         this.showSuccess('Link shared successfully!');
+        
+        // Reset the form
         this.selectedFriends.clear();
         this.updateShareButton();
         this.updateFriendsSelection();
+        if (document.getElementById('share-note')) {
+          document.getElementById('share-note').value = '';
+          document.querySelector('.char-count').textContent = '0/500';
+        }
+        
         await this.loadRecentLinks();
       } catch (error) {
         let errorMessage = 'Failed to share link';
         
-        // Extract specific error messages
         if (error.message && error.message.includes('Link validation failed')) {
           if (error.message.includes('url:')) {
             errorMessage = 'Invalid URL format. Please try sharing a different page.';
@@ -272,11 +294,10 @@ class LinkDropExtension {
                 onload="this.style.display='block';this.previousElementSibling.style.display='none';"
                 onerror="this.style.display='none';this.previousElementSibling.style.display='flex';"
               >
-              <div class="status-indicator ${friend.isOnline ? '' : 'offline'}"></div>
+              <span class="status-indicator ${friend.isOnline ? 'online' : 'offline'}"></span>
             </div>
             <div class="friend-info">
               <div class="friend-name">${friend.username}</div>
-              <div class="friend-status">${friend.isOnline ? 'Online' : 'Offline'}</div>
             </div>
             <input type="checkbox" class="friend-checkbox" value="${friend._id}">
           </div>
@@ -775,6 +796,43 @@ class LinkDropExtension {
       const badge = document.getElementById('notification-badge');
       if (badge) {
         badge.classList.add('hidden');
+      }
+    }
+
+    handleNoteInput(e) {
+      const textarea = e.target;
+      const maxLength = parseInt(textarea.getAttribute('maxlength'));
+      const currentLength = textarea.value.length;
+      const charCount = document.querySelector('.char-count');
+      
+      if (charCount) {
+        charCount.textContent = `${currentLength}/${maxLength}`;
+        
+        // Update character count styling based on length
+        charCount.classList.remove('near-limit', 'at-limit');
+        if (currentLength >= maxLength) {
+          charCount.classList.add('at-limit');
+        } else if (currentLength >= maxLength * 0.8) {
+          charCount.classList.add('near-limit');
+        }
+      }
+    }
+
+    handleEmojiClick(e) {
+      e.preventDefault();
+      // You can implement emoji picker functionality here
+      // For now, we'll just add a simple smiley
+      const textarea = document.getElementById('share-note');
+      if (textarea) {
+        const pos = textarea.selectionStart;
+        const text = textarea.value;
+        const newText = text.slice(0, pos) + '😊 ' + text.slice(pos);
+        textarea.value = newText;
+        textarea.selectionStart = textarea.selectionEnd = pos + 2;
+        textarea.focus();
+        
+        // Trigger input event to update character count
+        textarea.dispatchEvent(new Event('input'));
       }
     }
   }
