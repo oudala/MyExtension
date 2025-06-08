@@ -39,6 +39,16 @@ const linkSchema = new mongoose.Schema({
     },
     readAt: Date
   }],
+  sharedWithGroups: [{
+    group: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Group'
+    },
+    sharedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   note: {
     type: String,
     maxlength: 500
@@ -64,6 +74,7 @@ const linkSchema = new mongoose.Schema({
 // Indexes for performance
 linkSchema.index({ sender: 1, createdAt: -1 });
 linkSchema.index({ 'receivers.user': 1, createdAt: -1 });
+linkSchema.index({ 'sharedWithGroups.group': 1, createdAt: -1 });
 linkSchema.index({ type: 1 });
 linkSchema.index({ tags: 1 });
 

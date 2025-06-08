@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const notificationSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ['new_link', 'friend_request', 'friend_accepted', 'system'],
+    enum: ['new_link', 'friend_request', 'friend_accepted', 'group_link', 'system'],
     required: true
   },
   title: {
@@ -23,6 +23,10 @@ const notificationSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
+  group: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Group'
+  },
   isRead: {
     type: Boolean,
     default: false
@@ -41,5 +45,6 @@ const notificationSchema = new mongoose.Schema({
 // Indexes for performance
 notificationSchema.index({ recipient: 1, createdAt: -1 });
 notificationSchema.index({ recipient: 1, isRead: 1 });
+notificationSchema.index({ group: 1, createdAt: -1 });
 
 export default mongoose.model('Notification', notificationSchema);

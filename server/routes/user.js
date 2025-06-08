@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import auth from '../middlewares/auth.js';
 import { upload, handleMulterError } from '../config/multer.js';
 import path from 'path';
+import Notification from '../models/Notification.js';
 
 const router = express.Router();
 
@@ -66,7 +67,7 @@ router.get('/friends', auth, async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    res.json({ friends: user.friends });
+    res.json({ friends: user.friends || [] });
   } catch (error) {
     console.error('Get friends error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -104,8 +105,7 @@ router.get('/search', auth, async (req, res) => {
 });
 
 // Send friend request
-router.post('/add-friend', auth, async (req, res) => {
-    console.log('[/api/user/add-friend] Received request body:', req.body);
+router.post('/friend-request', auth, async (req, res) => {
   try {
     const { username } = req.body;
 
@@ -146,11 +146,25 @@ router.post('/add-friend', auth, async (req, res) => {
 
     await targetUser.save();
 
+    // Create notification for friend request
+    const notification = new Notification({
+      type: 'friend_request',
+      title: 'New Friend Request',
+      message: `${currentUser.username} wants to be your friend`,
+      recipient: targetUser._id,
+      sender: currentUser._id,
+      metadata: {
+        requestId: targetUser.friendRequests[targetUser.friendRequests.length - 1]._id
+      }
+    });
+
+    await notification.save();
+
     // Emit socket event for real-time notification
-    const io = req.app.get('io');
-    if (io) {
-      io.to(targetUser._id.toString()).emit('friend_request', {
-        from: {
+    if (req.io) {
+      req.io.to(targetUser._id.toString()).emit('notification:new', {
+        ...notification.toObject(),
+        sender: {
           _id: currentUser._id,
           username: currentUser.username,
           avatar: currentUser.avatar
@@ -160,13 +174,32 @@ router.post('/add-friend', auth, async (req, res) => {
 
     res.json({ message: 'Friend request sent successfully' });
   } catch (error) {
-    console.error('Add friend error:', error);
+    console.error('Send friend request error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Accept/reject friend request
-router.put('/friend-request/:requestId', auth, async (req, res) => {
+// Get friend requests
+router.get('/friend-requests', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId)
+      .populate('friendRequests.from', 'username email avatar')
+      .select('friendRequests');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const pendingRequests = user.friendRequests.filter(req => req.status === 'pending') || [];
+    res.json({ requests: pendingRequests });
+  } catch (error) {
+    console.error('Get friend requests error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Handle friend request (accept/reject)
+router.put('/friend-requests/:requestId', auth, async (req, res) => {
   try {
     const { requestId } = req.params;
     const { action } = req.body; // 'accept' or 'reject'
@@ -176,8 +209,11 @@ router.put('/friend-request/:requestId', auth, async (req, res) => {
     }
 
     const user = await User.findById(req.userId);
-    const request = user.friendRequests.id(requestId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
+    const request = user.friendRequests.id(requestId);
     if (!request || request.status !== 'pending') {
       return res.status(404).json({ message: 'Friend request not found' });
     }
@@ -187,17 +223,25 @@ router.put('/friend-request/:requestId', auth, async (req, res) => {
     if (action === 'accept') {
       // Add each other as friends
       const fromUser = await User.findById(request.from);
+      if (!fromUser) {
+        return res.status(404).json({ message: 'Requesting user not found' });
+      }
       
       user.friends.push(fromUser._id);
       fromUser.friends.push(user._id);
       
       await fromUser.save();
 
-      // Emit socket event for real-time dashboard update to both users
-      const io = req.app.get('io');
-      if (io) {
-        io.to(user._id.toString()).emit('dashboard_update', { type: 'friends_updated' });
-        io.to(fromUser._id.toString()).emit('dashboard_update', { type: 'friends_updated' });
+      // Emit socket event for real-time update
+      if (req.io) {
+        req.io.to(fromUser._id.toString()).emit('friend:request:accepted', {
+          friend: {
+            _id: user._id,
+            username: user.username,
+            avatar: user.avatar,
+            isOnline: user.isOnline
+          }
+        });
       }
     }
 
@@ -205,7 +249,8 @@ router.put('/friend-request/:requestId', auth, async (req, res) => {
 
     res.json({ 
       message: `Friend request ${action}ed successfully`,
-      action 
+      action,
+      requestId
     });
   } catch (error) {
     console.error('Handle friend request error:', error);
@@ -219,33 +264,31 @@ router.delete('/friends/:friendId', auth, async (req, res) => {
     const { friendId } = req.params;
 
     // Remove from both users' friend lists
-    await User.findByIdAndUpdate(req.userId, {
-      $pull: { friends: friendId }
-    });
+    const [user, friend] = await Promise.all([
+      User.findByIdAndUpdate(
+        req.userId,
+        { $pull: { friends: friendId } },
+        { new: true }
+      ),
+      User.findByIdAndUpdate(
+        friendId,
+        { $pull: { friends: req.userId } },
+        { new: true }
+      )
+    ]);
 
-    await User.findByIdAndUpdate(friendId, {
-      $pull: { friends: req.userId }
-    });
+    if (!friend) {
+      return res.status(404).json({ message: 'Friend not found' });
+    }
+
+    // Emit socket event for real-time update
+    if (req.io) {
+      req.io.to(friendId).emit('friend:removed', { userId: req.userId });
+    }
 
     res.json({ message: 'Friend removed successfully' });
   } catch (error) {
     console.error('Remove friend error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Get friend requests
-router.get('/friend-requests', auth, async (req, res) => {
-  try {
-    const user = await User.findById(req.userId)
-      .populate('friendRequests.from', 'username email avatar')
-      .select('friendRequests');
-
-    const pendingRequests = user.friendRequests.filter(req => req.status === 'pending');
-
-    res.json({ requests: pendingRequests });
-  } catch (error) {
-    console.error('Get friend requests error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

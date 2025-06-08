@@ -17,6 +17,7 @@ import authRoutes from './routes/auth.js';
 import userRoutes from './routes/user.js';
 import linksRoutes from './routes/links.js';
 import notificationRoutes from './routes/notifications.js';
+import groupRoutes from './routes/groups.js';
 import { setupSocket } from './sockets/socketHandler.js';
 import { errorHandler, notFound } from './middlewares/error.js';
 
@@ -27,11 +28,11 @@ const __dirname = dirname(__filename);
 dotenv.config();
 
 const app = express();
-const server = createServer(app);
-const io = new Server(server, {
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
-    methods: ["GET", "POST"]
+    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    methods: ['GET', 'POST']
   }
 });
 
@@ -127,6 +128,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/links', linksRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/groups', groupRoutes);
 
 // Error handling middleware
 app.use(notFound);
@@ -134,9 +136,6 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+httpServer.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
-
-export default app;

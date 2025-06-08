@@ -59,4 +59,13 @@ export const notificationsAPI = {
   deleteAllNotifications: () => api.delete('/notifications'),
 };
 
+export const groupsAPI = {
+  getGroups: () => api.get('/groups'),
+  getGroup: (groupId) => api.get(`/groups/${groupId}`),
+  createGroup: (data) => api.post('/groups', data),
+  updateGroup: (groupId, data) => api.put(`/groups/${groupId}`, data),
+  addMembers: (groupId, userIds) => api.post(`/groups/${groupId}/members`, { userIds }),
+  removeMember: (groupId, userId) => api.delete(`/groups/${groupId}/members/${userId}`)
+};
+
 export default api;

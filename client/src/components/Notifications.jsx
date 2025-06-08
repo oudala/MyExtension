@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSocket } from '../contexts/SocketContext';
 import UserAvatar from './UserAvatar';
 import { getRelativeTime } from '../utils/helpers';
+import { userAPI } from '../services/api';
 
 const Notifications = () => {
   const { notifications, markNotificationAsRead, deleteNotification, unreadCount, markAllNotificationsAsRead } = useSocket();
@@ -24,21 +25,27 @@ const Notifications = () => {
     return getRelativeTime(timestamp);
   };
 
-  const getNotificationLink = (notification) => {
-    switch (notification.type) {
-      case 'FRIEND_REQUEST':
-      case 'FRIEND_ACCEPTED':
-        return '/friends';
-      case 'LINK_SHARED':
-        return '/links';
-      default:
-        return '/';
+  const handleAcceptFriendRequest = async (notification) => {
+    try {
+      await userAPI.acceptFriendRequest(notification.metadata.requestId);
+      await deleteNotification(notification._id);
+    } catch (error) {
+      console.error('Failed to accept friend request:', error);
+    }
+  };
+
+  const handleRejectFriendRequest = async (notification) => {
+    try {
+      await userAPI.rejectFriendRequest(notification.metadata.requestId);
+      await deleteNotification(notification._id);
+    } catch (error) {
+      console.error('Failed to reject friend request:', error);
     }
   };
 
   const getNotificationIcon = (notification) => {
     switch (notification.type) {
-      case 'FRIEND_REQUEST':
+      case 'friend_request':
         return (
           <div className="rounded-full bg-blue-100 p-2">
             <svg className="h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -46,7 +53,7 @@ const Notifications = () => {
             </svg>
           </div>
         );
-      case 'FRIEND_ACCEPTED':
+      case 'friend_accepted':
         return (
           <div className="rounded-full bg-green-100 p-2">
             <svg className="h-5 w-5 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -54,7 +61,8 @@ const Notifications = () => {
             </svg>
           </div>
         );
-      case 'LINK_SHARED':
+      case 'new_link':
+      case 'group_link':
         return (
           <div className="rounded-full bg-purple-100 p-2">
             <svg className="h-5 w-5 text-purple-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -63,11 +71,42 @@ const Notifications = () => {
           </div>
         );
       default:
+        return null;
+    }
+  };
+
+  const renderNotificationContent = (notification) => {
+    switch (notification.type) {
+      case 'friend_request':
         return (
-          <div className="rounded-full bg-gray-100 p-2">
-            <svg className="h-5 w-5 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
+          <div className="flex flex-col">
+            <p className="text-sm font-medium text-gray-900">
+              {notification.title}
+            </p>
+            <p className="text-sm text-gray-600">{notification.message}</p>
+            <div className="mt-2 flex space-x-2">
+              <button
+                onClick={() => handleAcceptFriendRequest(notification)}
+                className="px-3 py-1 text-sm text-white bg-blue-600 rounded hover:bg-blue-700"
+              >
+                Accept
+              </button>
+              <button
+                onClick={() => handleRejectFriendRequest(notification)}
+                className="px-3 py-1 text-sm text-gray-700 bg-gray-200 rounded hover:bg-gray-300"
+              >
+                Reject
+              </button>
+            </div>
+          </div>
+        );
+      default:
+        return (
+          <div>
+            <p className="text-sm font-medium text-gray-900">
+              {notification.title}
+            </p>
+            <p className="text-sm text-gray-600">{notification.message}</p>
           </div>
         );
     }
@@ -75,17 +114,16 @@ const Notifications = () => {
 
   return (
     <div className="relative">
-      <button 
+      <button
         onClick={toggleNotifications}
-        className="relative p-1 rounded-full text-gray-600 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        className="relative p-1 rounded-full text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
       >
+        <span className="sr-only">View notifications</span>
         <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute top-0 right-0 block h-5 w-5 rounded-full bg-red-500 text-white text-xs font-medium flex items-center justify-center">
-            {unreadCount}
-          </span>
+          <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-400 ring-2 ring-white" />
         )}
       </button>
 
@@ -110,22 +148,20 @@ const Notifications = () => {
                   <div key={notification._id} className={`p-4 ${!notification.isRead ? 'bg-blue-50' : ''}`}>
                     <div className="flex items-start">
                       <div className="flex-shrink-0 mr-3">
-                        <UserAvatar user={notification.sender} size="sm" />
+                        {notification.sender ? (
+                          <UserAvatar user={notification.sender} size="sm" />
+                        ) : (
+                          getNotificationIcon(notification)
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <Link 
-                          to={getNotificationLink(notification)}
-                          onClick={() => handleMarkAsRead(notification._id)}
-                          className="block text-sm font-medium text-gray-900 hover:text-blue-600"
-                        >
-                          {notification.content}
-                        </Link>
+                        {renderNotificationContent(notification)}
                         <p className="text-xs text-gray-500 mt-1">
                           {formatNotificationTime(notification.createdAt)}
                         </p>
                       </div>
                       <div className="ml-3 flex-shrink-0 flex">
-                        {!notification.isRead && (
+                        {!notification.isRead && notification.type !== 'friend_request' && (
                           <button
                             onClick={() => handleMarkAsRead(notification._id)}
                             className="mr-2 text-blue-600 hover:text-blue-800"
@@ -135,14 +171,16 @@ const Notifications = () => {
                             </svg>
                           </button>
                         )}
-                        <button
-                          onClick={() => handleDeleteNotification(notification._id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
+                        {notification.type !== 'friend_request' && (
+                          <button
+                            onClick={() => handleDeleteNotification(notification._id)}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -161,7 +199,6 @@ const Notifications = () => {
                 className="text-xs text-blue-600 hover:text-blue-800"
                 onClick={() => {
                   setIsOpen(false);
-                  // Mark all notifications as read using the API
                   markAllNotificationsAsRead();
                 }}
               >

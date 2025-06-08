@@ -8,6 +8,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Friends from './pages/Friends';
 import Links from './pages/Links';
+import Groups from './pages/Groups';
 import Profile from './pages/Profile';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -44,6 +45,15 @@ function App() {
                 <SocketProvider>
                   <Layout>
                     <Links />
+                  </Layout>
+                </SocketProvider>
+              </ProtectedRoute>
+            } />
+            <Route path="/groups" element={
+              <ProtectedRoute>
+                <SocketProvider>
+                  <Layout>
+                    <Groups />
                   </Layout>
                 </SocketProvider>
               </ProtectedRoute>

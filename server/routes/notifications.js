@@ -11,6 +11,8 @@ router.get('/', auth, async (req, res) => {
     const notifications = await Notification.find({ recipient: req.userId })
       .sort({ createdAt: -1 })
       .populate('sender', 'username avatar')
+      .populate('group', 'name avatar')
+      .populate('link', 'url title')
       .limit(50)
       .lean();
 

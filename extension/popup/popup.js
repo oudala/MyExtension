@@ -4,10 +4,13 @@ class LinkDropExtension {
       this.API_BASE_URL = 'http://localhost:5000';
       this.user = null;
       this.selectedFriends = new Set();
+      this.selectedGroups = new Set();
       this.friends = [];
+      this.groups = [];
       this.searchTimeout = null;
       this.currentTab = null;
       this.notifications = [];
+      this.activeTab = 'friends'; // Track active tab
       
       this.init();
     }
@@ -38,6 +41,7 @@ class LinkDropExtension {
           this.showMainScreen();
           this.updateUserAvatar();
           await this.loadFriends();
+          await this.loadGroups();
           await this.loadRecentLinks();
         } catch (error) {
           await this.removeStorageItem('token');
@@ -64,8 +68,7 @@ class LinkDropExtension {
       });
       document.getElementById('share-btn')?.addEventListener('click', () => this.handleShare());
       document.getElementById('open-dashboard')?.addEventListener('click', () => this.openDashboard());
-      document.getElementById('friend-search')?.addEventListener('input', (e) => this.handleFriendSearch(e));
-
+      
       // Notification handling
       const notificationBtn = document.getElementById('notification-btn');
       if (notificationBtn) {
@@ -83,6 +86,19 @@ class LinkDropExtension {
       if (emojiBtn) {
         emojiBtn.addEventListener('click', this.handleEmojiClick.bind(this));
       }
+
+      // Tab switching
+      document.getElementById('friends-tab')?.addEventListener('click', () => this.switchTab('friends'));
+      document.getElementById('groups-tab')?.addEventListener('click', () => this.switchTab('groups'));
+      
+      // Search handling
+      document.getElementById('friend-search')?.addEventListener('input', (e) => {
+        if (this.activeTab === 'friends') {
+          this.handleFriendSearch(e);
+        } else {
+          this.handleGroupSearch(e);
+        }
+      });
     }
   
     async handleLogin(e) {
@@ -103,6 +119,7 @@ class LinkDropExtension {
         this.showMainScreen();
         this.updateUserAvatar(); // Update avatar after setting new user
         await this.loadFriends();
+        await this.loadGroups();
         await this.loadRecentLinks();
       } catch (error) {
         console.error('Login failed:', error);
@@ -126,6 +143,7 @@ class LinkDropExtension {
         this.user = response.user;
         this.showMainScreen();
         await this.loadFriends();
+        await this.loadGroups();
       } catch (error) {
         this.showError(error.message || 'Registration failed');
       }
@@ -140,8 +158,8 @@ class LinkDropExtension {
     }
   
     async handleShare() {
-      if (this.selectedFriends.size === 0) {
-        this.showError('Please select at least one friend to share with');
+      if (this.selectedFriends.size === 0 && this.selectedGroups.size === 0) {
+        this.showError('Please select at least one friend or group to share with');
         return;
       }
 
@@ -166,17 +184,23 @@ class LinkDropExtension {
         url: this.currentTab.url,
         title: this.currentTab.title,
         friends: Array.from(this.selectedFriends),
-        note: noteText // Add the note to the share data
+        groups: Array.from(this.selectedGroups),
+        note: noteText
       };
 
       try {
-        await this.apiRequest('/links/share', 'POST', shareData);
+        console.log('Sharing link with data:', shareData);
+        const response = await this.apiRequest('/links/share', 'POST', shareData);
+        console.log('Share response:', response);
+        
         this.showSuccess('Link shared successfully!');
         
         // Reset the form
         this.selectedFriends.clear();
+        this.selectedGroups.clear();
         this.updateShareButton();
         this.updateFriendsSelection();
+        this.updateGroupsSelection();
         if (document.getElementById('share-note')) {
           document.getElementById('share-note').value = '';
           document.querySelector('.char-count').textContent = '0/500';
@@ -184,13 +208,27 @@ class LinkDropExtension {
         
         await this.loadRecentLinks();
       } catch (error) {
+        console.error('Share error:', error);
+        console.error('Share data:', shareData);
+        
         let errorMessage = 'Failed to share link';
         
-        if (error.message && error.message.includes('Link validation failed')) {
-          if (error.message.includes('url:')) {
-            errorMessage = 'Invalid URL format. Please try sharing a different page.';
-          } else if (error.message.includes('title:')) {
-            errorMessage = 'Invalid title format. Please try again.';
+        if (error.message) {
+          if (error.message.includes('Link validation failed')) {
+            if (error.message.includes('url:')) {
+              errorMessage = 'Invalid URL format. Please try sharing a different page.';
+            } else if (error.message.includes('title:')) {
+              errorMessage = 'Invalid title format. Please try again.';
+            }
+          } else if (error.message.includes('User not found')) {
+            errorMessage = 'Session expired. Please log in again.';
+            // Force logout if user not found
+            await this.handleLogout();
+            return;
+          } else if (error.message.includes('member of all groups')) {
+            errorMessage = 'You must be a member of all selected groups to share links.';
+          } else {
+            errorMessage = error.message;
           }
         }
         
@@ -207,6 +245,17 @@ class LinkDropExtension {
         console.error('Failed to load friends:', error);
         this.friends = [];
         this.renderFriends([]);
+      }
+    }
+  
+    async loadGroups() {
+      try {
+        const response = await this.apiRequest('/groups', 'GET');
+        this.groups = response.groups || [];
+        this.updateGroupsSelection();
+      } catch (error) {
+        console.error('Failed to load groups:', error);
+        this.showError('Failed to load groups');
       }
     }
   
@@ -394,16 +443,77 @@ class LinkDropExtension {
       });
     }
   
+    updateGroupsSelection() {
+      const groupsList = document.getElementById('groups-list');
+      groupsList.innerHTML = '';
+
+      if (this.groups.length === 0) {
+        groupsList.innerHTML = `
+          <div class="empty-state">
+            <p>No groups found</p>
+            <button onclick="window.open('${this.API_BASE_URL}/groups')" class="secondary-button">
+              Create a Group
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      this.groups.forEach(group => {
+        const isSelected = this.selectedGroups.has(group._id);
+        const div = document.createElement('div');
+        div.className = `group-item ${isSelected ? 'selected' : ''}`;
+        div.setAttribute('data-group-id', group._id);
+        
+        div.innerHTML = `
+          <div class="group-avatar">
+            ${group.avatar ? `<img src="${group.avatar}" alt="${group.name}">` : group.name.charAt(0)}
+          </div>
+          <div class="group-info">
+            <div class="group-name">${group.name}</div>
+            <div class="group-members">${group.members.length} members</div>
+          </div>
+        `;
+
+        div.addEventListener('click', () => this.toggleGroupSelection(group._id));
+        groupsList.appendChild(div);
+      });
+    }
+  
+    toggleGroupSelection(groupId) {
+      const groupItem = document.querySelector(`[data-group-id="${groupId}"]`);
+      
+      if (this.selectedGroups.has(groupId)) {
+        this.selectedGroups.delete(groupId);
+        groupItem.classList.remove('selected');
+      } else {
+        this.selectedGroups.add(groupId);
+        groupItem.classList.add('selected');
+      }
+      
+      this.updateShareButton();
+    }
+  
     updateShareButton() {
       const shareBtn = document.getElementById('share-btn');
-      const count = this.selectedFriends.size;
+      const friendCount = this.selectedFriends.size;
+      const groupCount = this.selectedGroups.size;
+      const totalCount = friendCount + groupCount;
       
-      if (count === 0) {
+      if (totalCount === 0) {
         shareBtn.disabled = true;
         shareBtn.textContent = 'Share Link';
       } else {
         shareBtn.disabled = false;
-        shareBtn.textContent = `Share with ${count} friend${count > 1 ? 's' : ''}`;
+        let text = 'Share with ';
+        if (friendCount > 0) {
+          text += `${friendCount} friend${friendCount > 1 ? 's' : ''}`;
+        }
+        if (groupCount > 0) {
+          if (friendCount > 0) text += ' and ';
+          text += `${groupCount} group${groupCount > 1 ? 's' : ''}`;
+        }
+        shareBtn.textContent = text;
       }
     }
   
@@ -588,31 +698,64 @@ class LinkDropExtension {
       }
 
       try {
-        console.log(`Making ${method} request to ${endpoint}`);
+        console.log(`Making ${method} request to ${endpoint}`, {
+          options,
+          data: data ? JSON.stringify(data) : null
+        });
+        
         const response = await fetch(`${this.API_BASE}${endpoint}`, options);
+        const responseData = await response.json();
+        
+        console.log(`Response from ${endpoint}:`, {
+          status: response.status,
+          data: responseData
+        });
         
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ message: `HTTP Error ${response.status}` }));
           console.error('API Error:', {
             endpoint,
             status: response.status,
-            error: errorData
+            error: responseData
           });
-          throw new Error(errorData.message || `HTTP ${response.status}`);
+          
+          // Handle specific error cases
+          if (response.status === 401) {
+            // Unauthorized - clear token and show login
+            await this.removeStorageItem('token');
+            this.showLoginScreen();
+            throw new Error('Session expired. Please log in again.');
+          }
+          
+          if (response.status === 403) {
+            throw new Error('You do not have permission to perform this action.');
+          }
+          
+          if (response.status === 404) {
+            if (endpoint.includes('/auth/validate')) {
+              throw new Error('Session expired. Please log in again.');
+            }
+            throw new Error('Resource not found.');
+          }
+          
+          throw new Error(responseData.message || `HTTP ${response.status}`);
         }
-  
-        return response.json();
+
+        return responseData;
       } catch (error) {
         console.error('Network Error:', {
           endpoint,
-          error: error.message
+          error: error.message,
+          stack: error.stack
         });
         
-        if (error.message.includes('Failed to fetch')) {
-          this.showError('Cannot connect to server. Please check if the server is running.');
-        } else {
-          this.showError(error.message || 'Request failed');
+        if (!navigator.onLine) {
+          throw new Error('No internet connection. Please check your network and try again.');
         }
+        
+        if (error.message.includes('Failed to fetch')) {
+          throw new Error('Cannot connect to server. Please check if the server is running.');
+        }
+        
         throw error;
       }
     }
@@ -758,6 +901,22 @@ class LinkDropExtension {
       }, 300); // Add 300ms delay to prevent too frequent updates
     }
   
+    handleGroupSearch(e) {
+      const searchTerm = e.target.value.toLowerCase();
+      
+      clearTimeout(this.searchTimeout);
+      this.searchTimeout = setTimeout(() => {
+        const filteredGroups = this.groups.filter(group =>
+          group.name.toLowerCase().includes(searchTerm)
+        );
+        
+        const tempGroups = [...this.groups];
+        this.groups = filteredGroups;
+        this.updateGroupsSelection();
+        this.groups = tempGroups;
+      }, 300);
+    }
+  
     startNotificationPolling() {
       // Load immediately
       this.loadNotifications();
@@ -789,7 +948,9 @@ class LinkDropExtension {
 
       // Reset other user-related elements
       this.selectedFriends.clear();
+      this.selectedGroups.clear();
       this.friends = [];
+      this.groups = [];
       this.notifications = [];
       
       // Reset any notification badges
@@ -833,6 +994,30 @@ class LinkDropExtension {
         
         // Trigger input event to update character count
         textarea.dispatchEvent(new Event('input'));
+      }
+    }
+
+    switchTab(tab) {
+      this.activeTab = tab;
+      
+      // Update tab buttons
+      document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+      document.getElementById(`${tab}-tab`).classList.add('active');
+      
+      // Update content sections
+      document.querySelectorAll('.share-tab-content').forEach(el => el.classList.remove('active'));
+      document.getElementById(`${tab}-section`).classList.add('active');
+      
+      // Update search placeholder
+      const searchInput = document.getElementById('friend-search');
+      searchInput.placeholder = `Search ${tab}...`;
+      
+      // Clear search and refresh lists
+      searchInput.value = '';
+      if (tab === 'friends') {
+        this.updateFriendsSelection();
+      } else {
+        this.updateGroupsSelection();
       }
     }
   }
