@@ -1,6 +1,8 @@
 import express from 'express';
 import User from '../models/User.js';
 import auth from '../middlewares/auth.js';
+import { upload, handleMulterError } from '../config/multer.js';
+import path from 'path';
 
 const router = express.Router();
 
@@ -246,6 +248,73 @@ router.get('/friend-requests', auth, async (req, res) => {
     console.error('Get friend requests error:', error);
     res.status(500).json({ message: 'Server error' });
   }
+});
+
+// Upload avatar
+router.post('/avatar', auth, (req, res, next) => {
+  console.log('Avatar upload request received');
+  console.log('Headers:', req.headers);
+  
+  upload.single('avatar')(req, res, async (err) => {
+    console.log('Multer processing completed');
+    
+    if (err) {
+      console.error('Multer upload error:', err);
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'File too large. Maximum size is 5MB.' });
+      }
+      return res.status(400).json({ message: err.message || 'Error uploading file' });
+    }
+
+    try {
+      console.log('File details:', req.file);
+      
+      if (!req.file) {
+        console.log('No file in request');
+        return res.status(400).json({ message: 'No file uploaded' });
+      }
+
+      // Get absolute file path
+      const filePath = req.file.path.replace(/\\/g, '/');
+      console.log('File path:', filePath);
+
+      // Construct URL - use relative path for storage
+      const avatarPath = `/uploads/${req.file.filename}`;
+      console.log('Avatar path:', avatarPath);
+
+      // Update user's avatar in database
+      const user = await User.findByIdAndUpdate(
+        req.userId,
+        { avatar: avatarPath },
+        { new: true }
+      ).select('-password');
+
+      if (!user) {
+        console.log('User not found:', req.userId);
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const fullAvatarUrl = `${req.protocol}://${req.get('host')}${avatarPath}`;
+      console.log('Full avatar URL:', fullAvatarUrl);
+      
+      res.json({
+        message: 'Avatar uploaded successfully',
+        avatar: avatarPath,
+        user: {
+          _id: user._id,
+          username: user.username,
+          email: user.email,
+          avatar: avatarPath
+        }
+      });
+    } catch (error) {
+      console.error('Avatar upload error:', error);
+      res.status(500).json({ 
+        message: 'Server error during avatar upload',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  });
 });
 
 export default router;

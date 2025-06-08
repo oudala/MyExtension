@@ -217,26 +217,24 @@ const Friends = () => {
               ) : friends.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {friends.map((friend) => (
-                    <div key={friend._id} className="flex items-center justify-between p-3 hover:bg-gray-50">
+                    <div key={friend._id} className="flex items-center justify-between p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow">
                       <div className="flex items-center">
                         <UserAvatar 
                           user={friend} 
-                          showStatus={true} 
                           size="md" 
+                          showStatus={true} 
                         />
                         <div className="ml-3">
                           <p className="text-sm font-medium text-gray-900">{friend.username}</p>
                           <p className="text-xs text-gray-500">{friend.email}</p>
                         </div>
                       </div>
-                      <div>
-                        <button
-                          onClick={() => handleRemoveFriend(friend._id)}
-                          className="text-sm text-red-600 hover:text-red-800"
-                        >
-                          Remove
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => handleRemoveFriend(friend._id)}
+                        className="text-sm text-red-600 hover:text-red-800 font-medium"
+                      >
+                        Remove
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -264,7 +262,7 @@ const Friends = () => {
               ) : friendRequests.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {friendRequests.map((request) => (
-                    <div key={request._id} className="flex items-center justify-between p-3 hover:bg-gray-50">
+                    <div key={request._id} className="flex items-center justify-between p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow">
                       <div className="flex items-center">
                         <UserAvatar 
                           user={request.from} 
@@ -278,13 +276,13 @@ const Friends = () => {
                       <div className="flex space-x-2">
                         <button
                           onClick={() => handleAcceptFriendRequest(request._id)}
-                          className="flex-1 bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 text-sm"
+                          className="px-3 py-1 text-sm text-white bg-blue-600 rounded hover:bg-blue-700"
                         >
                           Accept
                         </button>
                         <button
                           onClick={() => handleRejectFriendRequest(request._id)}
-                          className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded hover:bg-gray-300 text-sm"
+                          className="px-3 py-1 text-sm text-gray-700 bg-gray-200 rounded hover:bg-gray-300"
                         >
                           Reject
                         </button>
@@ -310,7 +308,7 @@ const Friends = () => {
               ) : searchResults.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {searchResults.map((user) => (
-                    <div key={user._id} className="flex items-center justify-between p-3 hover:bg-gray-50">
+                    <div key={user._id} className="flex items-center justify-between p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow">
                       <div className="flex items-center">
                         <UserAvatar 
                           user={user} 
@@ -323,11 +321,11 @@ const Friends = () => {
                       </div>
                       <div>
                         {user.requestSent ? (
-                          <span className="text-sm text-green-600">Request sent</span>
+                          <span className="text-sm text-green-600 font-medium">Request sent</span>
                         ) : (
                           <button
                             onClick={() => handleSendFriendRequest(user)}
-                            className="text-sm bg-blue-600 hover:bg-blue-700 text-white py-1 px-3 rounded"
+                            className="px-3 py-1 text-sm text-white bg-blue-600 rounded hover:bg-blue-700"
                           >
                             Add Friend
                           </button>

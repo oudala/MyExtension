@@ -11,6 +11,7 @@ import Links from './pages/Links';
 import Profile from './pages/Profile';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
   return (
@@ -48,11 +49,15 @@ function App() {
               </ProtectedRoute>
             } />
             <Route path="/profile" element={
-              <ProtectedRoute>
-                <Layout>
-                  <Profile />
-                </Layout>
-              </ProtectedRoute>
+              <ErrorBoundary>
+                <ProtectedRoute>
+                  <SocketProvider>
+                    <Layout>
+                      <Profile />
+                    </Layout>
+                  </SocketProvider>
+                </ProtectedRoute>
+              </ErrorBoundary>
             } />
           </Routes>
           <Toaster position="top-right" />

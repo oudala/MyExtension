@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import { linksAPI, userAPI } from '../services/api';
 import LinkCard from '../components/LinkCard';
+import UserAvatar from '../components/UserAvatar';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -198,12 +199,11 @@ const Dashboard = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                   {friends.map(friend => (
                     <div key={friend._id} className="flex items-center p-3 border rounded-lg">
-                      <div className="relative">
-                        <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-700">
-                          {friend.username.charAt(0).toUpperCase()}
-                        </div>
-                        <span className={`absolute bottom-0 right-0 block h-3 w-3 rounded-full ring-2 ring-white ${isFriendOnline(friend._id) ? 'bg-green-400' : 'bg-gray-400'}`}></span>
-                      </div>
+                      <UserAvatar 
+                        user={friend} 
+                        size="md" 
+                        showStatus={true} 
+                      />
                       <div className="ml-3">
                         <p className="text-sm font-medium text-gray-900">{friend.username}</p>
                         <p className="text-xs text-gray-500">{isFriendOnline(friend._id) ? 'Online' : 'Offline'}</p>

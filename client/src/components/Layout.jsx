@@ -4,12 +4,33 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import Notifications from './Notifications';
 
+const API_BASE_URL = 'http://localhost:5000';
+
 const Layout = ({ children }) => {
   const { user, logout } = useAuth();
   const { unreadCount } = useSocket();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  const generateFallbackAvatar = (username) => {
+    const colors = [
+      '#F87171', '#FB923C', '#FBBF24', '#34D399',
+      '#60A5FA', '#818CF8', '#A78BFA', '#F472B6'
+    ];
+    
+    const hash = username?.split('').reduce((acc, char) => {
+      return char.charCodeAt(0) + ((acc << 5) - acc);
+    }, 0);
+    
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  const getFullImageUrl = (path) => {
+    if (!path) return null;
+    if (path.startsWith('http')) return path;
+    return `${API_BASE_URL}${path}`;
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -117,8 +138,26 @@ const Layout = ({ children }) => {
             <div className="relative">
               <div className="flex items-center cursor-pointer">
                 <span className="text-gray-700 mr-2">{user?.username}</span>
-                <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white">
-                  {user?.username?.charAt(0).toUpperCase()}
+                <div 
+                  className="h-8 w-8 rounded-full flex items-center justify-center text-white"
+                  style={{
+                    backgroundColor: !user?.avatar ? generateFallbackAvatar(user?.username) : undefined
+                  }}
+                >
+                  {user?.avatar ? (
+                    <img 
+                      src={getFullImageUrl(user.avatar)}
+                      alt={`${user?.username}'s avatar`}
+                      className="w-full h-full object-cover rounded-full"
+                      onError={(e) => {
+                        console.error('Avatar load error:', e);
+                        e.target.parentElement.style.backgroundColor = generateFallbackAvatar(user?.username);
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    user?.username?.charAt(0).toUpperCase()
+                  )}
                 </div>
               </div>
             </div>

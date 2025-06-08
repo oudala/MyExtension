@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { toast } from 'react-hot-toast';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -23,10 +24,32 @@ const Login = () => {
     return () => clearError();
   }, [clearError]);
 
+  const validateForm = () => {
+    if (!email.trim()) {
+      toast.error('Email is required');
+      return false;
+    }
+
+    if (!password.trim()) {
+      toast.error('Password is required');
+      return false;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast.error('Please enter a valid email address');
+      return false;
+    }
+
+    return true;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    clearError();
     
-    if (!email || !password) {
+    if (!validateForm()) {
       return;
     }
     
@@ -34,9 +57,18 @@ const Login = () => {
     
     try {
       await login(email, password);
+      toast.success('Login successful!');
       navigate('/');
     } catch (error) {
       console.error('Login error:', error);
+      // Show specific error messages based on the error
+      if (error.message.includes('not found')) {
+        toast.error('Email not found. Please check your email or register.');
+      } else if (error.message.includes('password')) {
+        toast.error('Incorrect password. Please try again.');
+      } else {
+        toast.error(error.message || 'Login failed. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
