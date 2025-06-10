@@ -1,222 +1,263 @@
 // Background service worker for LinkDrop extension
+console.log('🚀 Service Worker Loading...', new Date().toISOString());
 
-let socket = null;
-let reconnectInterval = null;
+// Initialize extension state
+let isInitialized = false;
 
-// Wait for the service worker to be ready
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('Service worker installed');
-  initializeExtension();
+// Service Worker Installation
+self.addEventListener('install', (event) => {
+  console.log('👷 Service Worker installing...', new Date().toISOString());
+  event.waitUntil(
+    Promise.all([
+      self.skipWaiting(),
+      chrome.storage.local.set({ serviceWorkerInstalled: true })
+    ])
+  );
 });
 
-// Initialize when extension starts
-chrome.runtime.onStartup.addListener(() => {
-  console.log('Service worker started');
-  initializeExtension();
+self.addEventListener('activate', (event) => {
+  console.log('🌟 Service Worker activating...', new Date().toISOString());
+  event.waitUntil(
+    Promise.all([
+      self.clients.claim(),
+      initializeExtension(),
+      chrome.storage.local.set({ serviceWorkerActivated: true })
+    ])
+  );
 });
 
+// Initialize all extension features
 async function initializeExtension() {
-  console.log('LinkDrop extension initialized');
-  
-  // Check if user is authenticated and connect to socket
-  const token = await getStorageItem('token');
-  if (token) {
-    connectToSocket(token);
+  if (isInitialized) {
+    console.log('🔄 Extension already initialized');
+    return;
   }
-}
-
-// Connect to Socket.IO server
-function connectToSocket(token) {
-  const API_BASE = 'http://localhost:5000';
+  
+  console.log('🏁 Starting extension initialization...');
   
   try {
-    socket = new WebSocket(`ws://localhost:5000/socket.io/?transport=websocket&token=${token}`);
+    // Start keep-alive mechanism
+    await setupKeepAlive();
+    console.log('✅ Keep-alive mechanism setup complete');
     
-    socket.onopen = () => {
-      console.log('Connected to LinkDrop server');
-      clearInterval(reconnectInterval);
-    };
+    // Setup command listeners
+    await setupCommandListeners();
+    console.log('✅ Command listeners setup complete');
     
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        handleSocketMessage(data);
-      } catch (error) {
-        console.error('Error parsing socket message:', error);
-      }
-    };
+    isInitialized = true;
+    console.log('✅ Extension initialized successfully', new Date().toISOString());
     
-    socket.onclose = () => {
-      console.log('Disconnected from LinkDrop server');
-      // Attempt to reconnect
-      reconnectInterval = setInterval(() => {
-        connectToSocket(token);
-      }, 5000);
-    };
-    
-    socket.onerror = (error) => {
-      console.error('Socket error:', error);
-    };
-    
+    // Store initialization status
+    await chrome.storage.local.set({ 
+      isInitialized: true,
+      lastInitialized: new Date().toISOString()
+    });
   } catch (error) {
-    console.error('Failed to connect to socket:', error);
+    console.error('❌ Extension initialization failed:', error);
+    // Store error information
+    await chrome.storage.local.set({ 
+      initializationError: error.message,
+      lastInitializationAttempt: new Date().toISOString()
+    });
+    throw error;
   }
 }
 
-// Handle incoming socket messages
-function handleSocketMessage(data) {
-  switch (data.type) {
-    case 'new_link':
-      handleNewLink(data.payload);
-      break;
-    case 'friend_request':
-      handleFriendRequest(data.payload);
-      break;
-    case 'notification':
-      handleNotification(data.payload);
-      break;
-    default:
-      console.log('Unknown socket message type:', data.type);
-  }
-}
-
-// Handle new link notification
-async function handleNewLink(linkData) {
-  // Show browser notification
-  chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'icons/icon48.png',
-    title: 'New Link Shared!',
-    message: `${linkData.sender.username} shared: ${linkData.title}`,
-    buttons: [
-      { title: 'Open Link' },
-      { title: 'View Dashboard' }
-    ]
-  });
-  
-  // Update badge count
-  await updateNotificationBadge();
-}
-
-// Handle friend request
-function handleFriendRequest(requestData) {
-  chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'icons/icon48.png',
-    title: 'Friend Request',
-    message: `${requestData.from.username} wants to be your friend`,
-    buttons: [
-      { title: 'Accept' },
-      { title: 'View Dashboard' }
-    ]
-  });
-}
-
-// Handle general notifications
-function handleNotification(notificationData) {
-  chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'icons/icon48.png',
-    title: notificationData.title,
-    message: notificationData.message
-  });
-}
-
-// Update notification badge
-async function updateNotificationBadge() {
+// Keep-alive mechanism
+async function setupKeepAlive() {
   try {
-    const token = await getStorageItem('token');
-    if (!token) return;
+    await chrome.alarms.create('keepAlive', {
+      periodInMinutes: 1,
+      delayInMinutes: 0
+    });
     
-    const response = await fetch('http://localhost:5000/api/notifications', {
+    chrome.alarms.onAlarm.addListener((alarm) => {
+      if (alarm.name === 'keepAlive') {
+        console.log('⏰ Keep-alive alarm triggered', new Date().toISOString());
+      }
+    });
+    
+    // Test alarm creation
+    const alarms = await chrome.alarms.getAll();
+    console.log('📢 Active alarms:', alarms);
+  } catch (error) {
+    console.error('❌ Keep-alive setup failed:', error);
+    throw error;
+  }
+}
+
+// Get the active tab safely
+async function getActiveTab() {
+  try {
+    // First try getting the active tab in the current window
+    let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    
+    // If no tab found, try getting the active tab from any window
+    if (!tab) {
+      [tab] = await chrome.tabs.query({ active: true });
+    }
+    
+    // If still no tab, get the last focused window's active tab
+    if (!tab) {
+      const window = await chrome.windows.getLastFocused();
+      [tab] = await chrome.tabs.query({ active: true, windowId: window.id });
+    }
+    
+    return tab;
+  } catch (error) {
+    console.error('Failed to get active tab:', error);
+    return null;
+  }
+}
+
+// Function to share link with a friend
+async function shareLink(userId, url, title) {
+  try {
+    const tokenData = await chrome.storage.local.get('token');
+    if (!tokenData.token) {
+      throw new Error('Authentication required');
+    }
+
+    // Get the API base URL from storage or use default
+    const apiData = await chrome.storage.local.get('apiUrl');
+    const apiUrl = apiData.apiUrl || 'http://localhost:5000';
+
+    const response = await fetch(`${apiUrl}/api/links/share`, {
+      method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`
-      }
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tokenData.token}`
+      },
+      body: JSON.stringify({
+        url: url,
+        title: title || url,
+        friends: [userId],  // Array of friend IDs
+        groups: [],        // No groups for quick share
+        note: 'Shared via quick shortcut'  // Optional note
+      })
     });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Share API error response:', errorData);
+      throw new Error(errorData.message || `Failed to share link (${response.status})`);
+    }
+
+    const result = await response.json();
+    console.log('Share link success:', result);
     
-    if (response.ok) {
-      const data = await response.json();
-      const unreadCount = data.notifications.filter(n => !n.isRead).length;
-      
-      chrome.action.setBadgeText({ 
-        text: unreadCount > 0 ? unreadCount.toString() : '' 
-      });
-      chrome.action.setBadgeBackgroundColor({ color: '#ef4444' });
+    // Verify the share was successful
+    if (!result.link) {
+      console.warn('Warning: Share response missing link data');
     }
+    
+    return result;
   } catch (error) {
-    console.error('Failed to update badge:', error);
+    console.error('Share link error:', error);
+    throw error;
   }
 }
 
-// Handle notification clicks
-chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIndex) => {
-  if (buttonIndex === 0) {
-    // First button - usually "Open Link" or "Accept"
-    // You can store notification data and handle specific actions here
-  } else if (buttonIndex === 1) {
-    // Second button - usually "View Dashboard"
-    chrome.tabs.create({ url: 'http://localhost:5173' });
-  }
-});
+// Setup command listeners
+async function setupCommandListeners() {
+  try {
+    // Log all registered commands
+    const commands = await chrome.commands.getAll();
+    console.log('📢 Registered commands:', commands);
 
-// Handle notification clicks (when user clicks the notification itself)
-chrome.notifications.onClicked.addListener((notificationId) => {
-  chrome.tabs.create({ url: 'http://localhost:5173' });
-});
+    chrome.commands.onCommand.addListener(async (command) => {
+      console.log('🎯 Command received:', command, new Date().toISOString());
+      
+      try {
+        // Handle quick share commands
+        const shortcutMatch = command.match(/quick_share_(\d)/);
+        if (shortcutMatch) {
+          const shortcutNumber = shortcutMatch[1];
+          
+          // Get settings first
+          const settings = await chrome.storage.local.get('shortcutSettings');
+          console.log('📋 Current shortcut settings:', settings);
+          
+          const shortcut = settings.shortcutSettings?.[`quick_share_${shortcutNumber}`];
+          
+          if (!shortcut?.id) {
+            throw new Error(`Shortcut ${shortcutNumber} not configured. Please configure it in the extension popup.`);
+          }
 
-// Context menu for sharing current page
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: 'share-page',
-    title: 'Share with LinkDrop',
-    contexts: ['page']
-  });
-});
+          // Get auth token
+          const tokenData = await chrome.storage.local.get('token');
+          if (!tokenData.token) {
+            throw new Error('Authentication required. Please log in through the extension popup.');
+          }
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId === 'share-page') {
-    // Open extension popup or trigger share action
-    chrome.action.openPopup();
-  }
-});
+          // Get the active tab
+          const tab = await getActiveTab();
+          if (!tab) {
+            throw new Error('Could not find an active tab. Please make sure you have an active tab open.');
+          }
 
-// Storage helper functions
-function getStorageItem(key) {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([key], (result) => {
-      resolve(result[key]);
-    });
-  });
-}
+          console.log(`🔗 Processing quick share ${shortcutNumber} for tab:`, tab.url);
 
-function setStorageItem(key, value) {
-  return new Promise((resolve) => {
-    chrome.storage.local.set({ [key]: value }, resolve);
-  });
-}
+          // Show processing notification
+          await chrome.notifications.create(`quick_share_${Date.now()}`, {
+            type: 'basic',
+            iconUrl: '/icons/icon48.png',
+            title: 'LinkDrop',
+            message: `Sharing "${tab.title || tab.url}" with your friend...`,
+            priority: 2
+          });
 
-// Listen for storage changes (e.g., when user logs in/out)
-chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (changes.token) {
-    if (changes.token.newValue) {
-      // User logged in
-      connectToSocket(changes.token.newValue);
-    } else {
-      // User logged out
-      if (socket) {
-        socket.close();
-        socket = null;
+          // Actually share the link
+          try {
+            const result = await shareLink(shortcut.id, tab.url, tab.title);
+            console.log('Share result:', result);
+
+            // Show success notification
+            await chrome.notifications.create(`quick_share_success_${Date.now()}`, {
+              type: 'basic',
+              iconUrl: '/icons/icon48.png',
+              title: 'LinkDrop',
+              message: `Successfully shared "${tab.title || tab.url}" with ${shortcut.name || 'your friend'}!`,
+              priority: 2
+            });
+          } catch (shareError) {
+            throw new Error(`Failed to share link: ${shareError.message}`);
+          }
+        }
+      } catch (error) {
+        console.error('Command Handler Error:', error);
+        await chrome.notifications.create(`error_${Date.now()}`, {
+          type: 'basic',
+          iconUrl: '/icons/icon48.png',
+          title: 'Error',
+          message: error.message,
+          priority: 2
+        });
       }
-      chrome.action.setBadgeText({ text: '' });
-    }
+    });
+  } catch (error) {
+    console.error('❌ Command listener setup failed:', error);
+    throw error;
   }
+}
+
+// Handle extension startup
+chrome.runtime.onStartup.addListener(() => {
+  console.log('🌟 Extension starting up', new Date().toISOString());
+  initializeExtension();
 });
 
-// Periodic sync for offline scenarios
-chrome.alarms.create('sync-notifications', { periodInMinutes: 5 });
+// Handle extension installation/update
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('📦 Extension installed/updated', new Date().toISOString());
+  initializeExtension();
+});
 
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'sync-notifications') {
-    updateNotificationBadge();
-  }
+// Error handling
+self.addEventListener('error', (event) => {
+  console.error('Service Worker error:', event.error, new Date().toISOString());
+});
+
+self.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled promise rejection:', event.reason, new Date().toISOString());
 });

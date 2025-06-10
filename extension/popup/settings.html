@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>LinkDrop Settings</title>
+  <style>
+    body {
+      width: 350px;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+    
+    .shortcut-section {
+      margin-bottom: 20px;
+    }
+    
+    .shortcut-header {
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+    
+    .shortcut-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 12px;
+      padding: 8px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+    }
+    
+    .shortcut-key {
+      background: #f1f5f9;
+      padding: 4px 8px;
+      border-radius: 4px;
+      margin-right: 12px;
+      font-family: monospace;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .shortcut-key kbd {
+      background: #e2e8f0;
+      padding: 2px 4px;
+      border-radius: 3px;
+      border: 1px solid #cbd5e1;
+      font-size: 12px;
+    }
+    
+    select {
+      flex-grow: 1;
+      padding: 6px;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+    }
+    
+    .recipient-type {
+      margin-right: 8px;
+    }
+    
+    .save-button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+    }
+    
+    .save-button:hover {
+      background: #2563eb;
+    }
+    
+    .status {
+      margin-top: 12px;
+      text-align: center;
+      color: #059669;
+    }
+  </style>
+</head>
+<body>
+  <div class="shortcut-section">
+    <div class="shortcut-header">Configure Quick Share Shortcuts</div>
+    
+    <div class="shortcut-row">
+      <div class="shortcut-key">
+        <kbd>Alt</kbd>+<kbd>1</kbd>
+      </div>
+      <select class="recipient-type" id="type-1">
+        <option value="user">User</option>
+        <option value="group">Group</option>
+      </select>
+      <select id="recipient-1"></select>
+    </div>
+    
+    <div class="shortcut-row">
+      <div class="shortcut-key">
+        <kbd>Alt</kbd>+<kbd>2</kbd>
+      </div>
+      <select class="recipient-type" id="type-2">
+        <option value="user">User</option>
+        <option value="group">Group</option>
+      </select>
+      <select id="recipient-2"></select>
+    </div>
+    
+    <div class="shortcut-row">
+      <div class="shortcut-key">
+        <kbd>Alt</kbd>+<kbd>3</kbd>
+      </div>
+      <select class="recipient-type" id="type-3">
+        <option value="user">User</option>
+        <option value="group">Group</option>
+      </select>
+      <select id="recipient-3"></select>
+    </div>
+  </div>
+  
+  <button class="save-button" id="save">Save Shortcuts</button>
+  <div class="status" id="status"></div>
+  
+  <script src="settings.js"></script>
+</body>
+</html> 
